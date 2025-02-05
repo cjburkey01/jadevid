@@ -1,0 +1,6 @@
+# Rust
+/target
+
+# Mac
+**/__MACOSX
+**.DS_Store
