@@ -13,5 +13,6 @@ ffmpeg-next = "7.1.0"
 fl2rust-macro = "0.6.0"
 fltk = { version = "1.5.3", features = ["fltk-bundled", "rwh06"] }
 futures-lite = "2.6.0"
-slotmap = "1.0.7"
+serde = "1.0"
+slotmap = { version = "1.0.7", features = ["serde"] }
 wgpu = "24.0.1"

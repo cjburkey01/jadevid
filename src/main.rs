@@ -1,8 +1,9 @@
 mod project;
 mod ui;
 
-use anyhow::Context;
 use fltk::{app, enums::Color, prelude::*, window::Window};
+
+// USEFUL: https://github.com/fltk-rs/demos/tree/master/wgpu
 
 fn main() {
     let app = app::App::default().with_scheme(app::Scheme::Oxy);

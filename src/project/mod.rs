@@ -1,20 +1,11 @@
-use core::ops::Range;
-use ffmpeg_next::Rational;
-use slotmap::SlotMap;
-use std::path::PathBuf;
+mod framenum;
+mod framespan;
+mod media_project;
+mod media_ref;
+mod rational;
 
-slotmap::new_key_type! { pub struct MediaKey; }
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct FrameNum(u64);
-
-pub struct FrameSpan(Range<u64>);
-
-pub struct MediaProject {
-    pub fps: Rational,
-    pub media: SlotMap<MediaKey, MediaReference>,
-}
-
-pub struct MediaReference {
-    pub path: PathBuf,
-}
+pub use framenum::*;
+pub use framespan::*;
+pub use media_project::*;
+pub use media_ref::*;
+pub use rational::*;
