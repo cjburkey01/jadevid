@@ -1,0 +1,59 @@
+# data file for the Fltk User Interface Designer (fluid)
+version 1.0400
+header_name {.h}
+code_name {.cxx}
+class UserInterface {open
+} {
+  Function {make_window()} {open
+  } {
+    Fl_Window main_window {
+      label {JadeVid!} open
+      xywh {396 225 640 480} type Double resizable size_range {640 480 0 0} visible
+    } {
+      Fl_Tile {} {open
+        xywh {0 19 640 461} resizable
+      } {
+        Fl_Group media_group {open
+          xywh {0 20 320 240} box UP_BOX
+        } {}
+        Fl_Group timeline_group {open
+          xywh {0 260 640 220} box UP_BOX
+        } {}
+        Fl_Group preview_group {open selected
+          xywh {320 20 320 240} box UP_BOX
+        } {}
+      }
+      Fl_Menu_Bar main_menu_bar {open
+        xywh {0 0 640 20}
+      } {
+        Submenu {} {
+          label File open
+          xywh {0 0 62 20}
+        } {
+          MenuItem {} {
+            label item
+            xywh {0 0 31 20}
+          }
+        }
+        Submenu {} {
+          label Edit open
+          xywh {20 20 62 20}
+        } {
+          MenuItem {} {
+            label item
+            xywh {10 10 31 20}
+          }
+        }
+        Submenu {} {
+          label Insert open
+          xywh {30 30 62 20}
+        } {
+          MenuItem {} {
+            label item
+            xywh {20 20 31 20}
+          }
+        }
+      }
+    }
+  }
+}
