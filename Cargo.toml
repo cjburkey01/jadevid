@@ -1,19 +1,41 @@
 [package]
-name = "jadevid"
-description = "A video editor...I'm trying again...Maybe I'll get somewhere :shrug:"
-version = "0.1.0"
-edition = "2024"
-publish = false
 authors = ["CJ Burkey <bulletlanguage@gmail.com>"]
 build = "build.rs"
+description = "A video editor...I'm trying again...Maybe I'll get somewhere :shrug:"
+edition = "2024"
+license = "GPL-2.0+"
+name = "jadevid"
+publish = false
+version = "0.1.0"
 
 [dependencies]
 anyhow = "1.0"
-ffmpeg-next = "7.1.0"
+env_logger = "0.11.6"
 fl2rust-macro = "0.6.0"
 fltk = { version = "1.5.3", features = ["fltk-bundled", "rwh06"] }
 futures-lite = "2.6.0"
+image = "0.25"
+log = "0.4"
 serde = "1.0"
 slotmap = { version = "1.0.7", features = ["serde"] }
 spin_sleep = "1.3.0"
 wgpu = "24.0.1"
+
+[dependencies.ffmpeg-next]
+version = "7.1.0"
+default-features = false
+features = [
+    "codec",
+    "device",
+    "filter",
+    "format",
+    "software-resampling",
+    "software-scaling",
+    "build",
+    "build-license-gpl",
+    "build-lib-mp3lame",
+    "build-lib-opus",
+    "build-lib-vorbis",
+    "build-lib-x264",
+    "build-lib-x265",
+]

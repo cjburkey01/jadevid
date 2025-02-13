@@ -19,41 +19,13 @@ class UserInterface {open
         Fl_Group timeline_group {open
           xywh {0 260 640 220} box UP_BOX
         } {}
-        Fl_Group preview_group {open selected
+        Fl_Group preview_group {open
           xywh {320 20 320 240} box UP_BOX
         } {}
       }
       Fl_Menu_Bar main_menu_bar {open
         xywh {0 0 640 20}
-      } {
-        Submenu {} {
-          label File open
-          xywh {0 0 62 20}
-        } {
-          MenuItem {} {
-            label item
-            xywh {0 0 31 20}
-          }
-        }
-        Submenu {} {
-          label Edit open
-          xywh {20 20 62 20}
-        } {
-          MenuItem {} {
-            label item
-            xywh {10 10 31 20}
-          }
-        }
-        Submenu {} {
-          label Insert open
-          xywh {30 30 62 20}
-        } {
-          MenuItem {} {
-            label item
-            xywh {20 20 31 20}
-          }
-        }
-      }
+      } {}
     }
   }
 }

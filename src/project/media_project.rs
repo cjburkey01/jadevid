@@ -1,11 +1,10 @@
-use super::{JadeRational, MediaKey, MediaReference};
+use super::{JadeRational, MediaInfo, MediaKey};
 use serde::{Deserialize, Serialize};
 use slotmap::SlotMap;
-use std::time::Duration;
 
 #[derive(Serialize, Deserialize)]
 pub struct MediaProject {
     pub fps: JadeRational,
-    pub time_length: Duration,
-    pub media: SlotMap<MediaKey, MediaReference>,
+    pub frame_count: u32,
+    pub media: SlotMap<MediaKey, MediaInfo>,
 }
