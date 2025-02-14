@@ -884,6 +884,7 @@ name = "jadevid"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "env_logger",
  "ffmpeg-next",
  "fl2rust-macro",

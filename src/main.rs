@@ -2,7 +2,7 @@ mod project;
 mod ui;
 
 use env_logger::Env;
-use ffmpeg_next::{Codec, Rational, codec::Context, media::Type};
+use ffmpeg_next::{Codec, Rational, frame::Video, media::Type};
 use fltk::{
     app::{self, Sender},
     dialog::{FileDialogAction, FileDialogType, NativeFileChooser},
@@ -132,107 +132,93 @@ impl MainApp<'_> {
         let mut chooser = NativeFileChooser::new(FileDialogType::BrowseFile);
         match chooser.try_show() {
             Ok(FileDialogAction::Success) => {
-                info!("import file \"{}\"", chooser.filename().to_string_lossy());
+                let file = chooser.filename();
+                let file_str = file.to_string_lossy();
+                info!("import file \"{file_str}\"");
 
                 match ffmpeg_next::format::input(&chooser.filename()) {
-                    Ok(context) => {
-                        for (k, v) in context.metadata().iter() {
-                            println!("{}: {}", k, v);
-                        }
+                    Ok(mut ictx) => match ictx.streams().best(Type::Video) {
+                        Some(input) => {
+                            let video_stream_index = input.index();
 
-                        if let Some(stream) =
-                            context.streams().best(ffmpeg_next::media::Type::Video)
-                        {
-                            println!("Best video stream index: {}", stream.index());
-                        }
-
-                        if let Some(stream) =
-                            context.streams().best(ffmpeg_next::media::Type::Audio)
-                        {
-                            println!("Best audio stream index: {}", stream.index());
-                        }
-
-                        if let Some(stream) =
-                            context.streams().best(ffmpeg_next::media::Type::Subtitle)
-                        {
-                            println!("Best subtitle stream index: {}", stream.index());
-                        }
-
-                        println!(
-                            "duration (seconds): {:.2}",
-                            context.duration() as f64 / f64::from(ffmpeg_next::ffi::AV_TIME_BASE)
-                        );
-
-                        for stream in context.streams() {
-                            println!("stream index {}:", stream.index());
-                            println!("\ttime_base: {}", stream.time_base());
-                            println!("\tstart_time: {}", stream.start_time());
-                            println!("\tduration (stream timebase): {}", stream.duration());
-                            println!(
-                                "\tduration (seconds): {:.2}",
-                                stream.duration() as f64 * f64::from(stream.time_base())
-                            );
-                            println!("\tframes: {}", stream.frames());
-                            println!("\tdisposition: {:?}", stream.disposition());
-                            println!("\tdiscard: {:?}", stream.discard());
-                            println!("\trate: {}", stream.rate());
-
-                            let codec = ffmpeg_next::codec::context::Context::from_parameters(
-                                stream.parameters(),
+                            match ffmpeg_next::codec::context::Context::from_parameters(
+                                input.parameters(),
                             )
-                            .expect("failed to get codec context");
-                            println!("\tmedium: {:?}", codec.medium());
-                            println!("\tid: {:?}", codec.id());
+                            .and_then(|c| c.decoder().video())
+                            {
+                                Ok(mut video_decoder) => {
+                                    match ffmpeg_next::software::scaling::context::Context::get(
+                                        video_decoder.format(),
+                                        video_decoder.width(),
+                                        video_decoder.height(),
+                                        ffmpeg_next::format::Pixel::RGB24,
+                                        video_decoder.width(),
+                                        video_decoder.height(),
+                                        ffmpeg_next::software::scaling::flag::Flags::BILINEAR,
+                                    ) {
+                                        Ok(mut scaler_ctx) => {
+                                            let mut frame_num: usize = 0;
 
-                            if codec.medium() == ffmpeg_next::media::Type::Video {
-                                if let Ok(video) = codec.decoder().video() {
-                                    println!("\tbit_rate: {}", video.bit_rate());
-                                    println!("\tmax_rate: {}", video.max_bit_rate());
-                                    println!("\tdelay: {}", video.delay());
-                                    println!("\tvideo.width: {}", video.width());
-                                    println!("\tvideo.height: {}", video.height());
-                                    println!("\tvideo.format: {:?}", video.format());
-                                    println!("\tvideo.has_b_frames: {}", video.has_b_frames());
-                                    println!("\tvideo.aspect_ratio: {}", video.aspect_ratio());
-                                    println!("\tvideo.color_space: {:?}", video.color_space());
-                                    println!("\tvideo.color_range: {:?}", video.color_range());
-                                    println!(
-                                        "\tvideo.color_primaries: {:?}",
-                                        video.color_primaries()
-                                    );
-                                    println!(
-                                        "\tvideo.color_transfer_characteristic: {:?}",
-                                        video.color_transfer_characteristic()
-                                    );
-                                    println!(
-                                        "\tvideo.chroma_location: {:?}",
-                                        video.chroma_location()
-                                    );
-                                    println!("\tvideo.references: {}", video.references());
-                                    println!(
-                                        "\tvideo.intra_dc_precision: {}",
-                                        video.intra_dc_precision()
-                                    );
+                                            for (stream, packet) in ictx.packets() {
+                                                if stream.index() == video_stream_index {
+                                                    if let Err(_err) =
+                                                        video_decoder.send_packet(&packet)
+                                                    {
+                                                        fltk::dialog::alert_default(
+                                                            "Failed sending packet from input video stream at index {video_stream_index}:\n{_err}\nin \"{file_str}\"",
+                                                        );
+                                                        break;
+                                                    }
+
+                                                    let mut decoded = Video::empty();
+                                                    while video_decoder
+                                                        .receive_frame(&mut decoded)
+                                                        .is_ok()
+                                                    {
+                                                        let mut rgb_frame = Video::empty();
+                                                        if let Err(_err) =
+                                                            scaler_ctx.run(&decoded, &mut rgb_frame)
+                                                        {
+                                                            fltk::dialog::alert_default(
+                                                                "Failed running software rescaling on frame {frame_num} in stream at index {video_stream_index}:\n{_err}\nin \"{file_str}\"",
+                                                            );
+                                                            break;
+                                                        }
+
+                                                        println!(
+                                                            "created output frame size {}x{}",
+                                                            rgb_frame.width(),
+                                                            rgb_frame.height()
+                                                        );
+
+                                                        frame_num += 1;
+                                                    }
+
+                                                    // receive_and_process_decoded_frames(
+                                                    //     &mut decoder,
+                                                    // )?;
+                                                }
+                                            }
+                                        }
+                                        Err(_err) => fltk::dialog::alert_default(
+                                            "Error creating software scaling context for pixel format transformation:\n{_err}\nin \"{file_str}\"",
+                                        ),
+                                    }
                                 }
-                            } else if codec.medium() == ffmpeg_next::media::Type::Audio {
-                                if let Ok(audio) = codec.decoder().audio() {
-                                    println!("\tbit_rate: {}", audio.bit_rate());
-                                    println!("\tmax_rate: {}", audio.max_bit_rate());
-                                    println!("\tdelay: {}", audio.delay());
-                                    println!("\taudio.rate: {}", audio.rate());
-                                    println!("\taudio.channels: {}", audio.channels());
-                                    println!("\taudio.format: {:?}", audio.format());
-                                    println!("\taudio.frames: {}", audio.frames());
-                                    println!("\taudio.align: {}", audio.align());
-                                    println!(
-                                        "\taudio.channel_layout: {:?}",
-                                        audio.channel_layout()
-                                    );
-                                }
+                                Err(_err) => fltk::dialog::alert_default(
+                                    "Error getting codec context for decoding video stream:\n{_err}\nin \"{file_str}\"",
+                                ),
                             }
                         }
+                        None => {
+                            fltk::dialog::alert_default(
+                                "Failed to locate video stream!\nin \"{file_str}\"",
+                            );
+                        }
+                    },
+                    Err(err) => {
+                        fltk::dialog::alert_default("Unable to load file:{err}\nat \"{file_str}\"");
                     }
-                    Err(err) => error!("failed to open file with ffmpeg: {err:?}"),
                 }
             }
             _ => {}
