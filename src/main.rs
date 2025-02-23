@@ -1,3 +1,4 @@
+mod ff_interop;
 mod project;
 mod ui;
 

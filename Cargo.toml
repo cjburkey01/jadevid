@@ -3,7 +3,7 @@ authors = ["CJ Burkey <bulletlanguage@gmail.com>"]
 build = "build.rs"
 description = "A video editor...I'm trying again...Maybe I'll get somewhere :shrug:"
 edition = "2024"
-license = "GPL-2.0+"
+license = "GPL-3.0+"
 name = "jadevid"
 publish = false
 version = "0.1.0"
@@ -11,10 +11,12 @@ version = "0.1.0"
 [dependencies]
 anyhow = "1.0"
 bytemuck = { version = "1.21", features = ["derive"] }
+derive_more = { version = "2.0.1", features = ["full"] }
 env_logger = "0.11.6"
 fl2rust-macro = "0.6.0"
 fltk = { version = "1.5.3", features = ["fltk-bundled", "rwh06"] }
 futures-lite = "2.6.0"
+glam = { version = "0.29.2", features = ["bytemuck", "serde"] }
 image = "0.25"
 log = "0.4"
 serde = "1.0"
