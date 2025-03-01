@@ -1,8 +1,6 @@
-use ffmpeg_next::Rational;
+use super::JadeRational;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-
-use super::JadeRational;
 
 slotmap::new_key_type! { pub struct MediaKey; }
 
@@ -13,22 +11,34 @@ pub struct MediaInfo {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct MediaTime {
-    pub length: u32,
+pub struct MediaLength {
+    pub time_base_length: u64,
     pub time_base: JadeRational,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BasicStreamInfo {
+    pub index: usize,
+    pub length: MediaLength,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VideoMediaStream {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AudioMediaStream {}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum MediaStream {
-    Video(MediaTime),
-    Audio(MediaTime),
+    Video(BasicStreamInfo, VideoMediaStream),
+    Audio(BasicStreamInfo, AudioMediaStream),
 }
 
 impl MediaStream {
     #[allow(unused)]
-    pub fn time(&self) -> MediaTime {
+    pub fn info(&self) -> BasicStreamInfo {
         match self {
-            Self::Video(media_time) | Self::Audio(media_time) => *media_time,
+            Self::Video(basic_info, _) | Self::Audio(basic_info, _) => basic_info.clone(),
         }
     }
 }

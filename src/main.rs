@@ -2,7 +2,11 @@ mod ff_interop;
 mod project;
 mod ui;
 
+use std::path::Path;
+
+use anyhow::Context;
 use env_logger::Env;
+use ff_interop::video_player::FfmpegVideoDecoder;
 use ffmpeg_next::{Codec, Rational, frame::Video, media::Type};
 use fltk::{
     app::{self, Sender},
@@ -27,17 +31,14 @@ pub enum AppEvent {
     MenuFileImport,
 }
 
+#[allow(unused)]
 struct MainApp<'a> {
     fltk_app: app::App,
-    #[allow(unused)]
     event_sender: app::Sender<AppEvent>,
     event_receiver: app::Receiver<AppEvent>,
-    #[allow(unused)]
     fltk_ui: UserInterface,
-    #[allow(unused)]
     preview_subwindow: Window,
     wgpu_state: WgpuState<'a>,
-    #[allow(unused)]
     open_project: MediaProject,
 }
 
@@ -137,93 +138,44 @@ impl MainApp<'_> {
                 let file_str = file.to_string_lossy();
                 info!("import file \"{file_str}\"");
 
-                match ffmpeg_next::format::input(&chooser.filename()) {
-                    Ok(mut ictx) => match ictx.streams().best(Type::Video) {
-                        Some(input) => {
-                            let video_stream_index = input.index();
-
-                            match ffmpeg_next::codec::context::Context::from_parameters(
-                                input.parameters(),
-                            )
-                            .and_then(|c| c.decoder().video())
-                            {
-                                Ok(mut video_decoder) => {
-                                    match ffmpeg_next::software::scaling::context::Context::get(
-                                        video_decoder.format(),
-                                        video_decoder.width(),
-                                        video_decoder.height(),
-                                        ffmpeg_next::format::Pixel::RGB24,
-                                        video_decoder.width(),
-                                        video_decoder.height(),
-                                        ffmpeg_next::software::scaling::flag::Flags::BILINEAR,
-                                    ) {
-                                        Ok(mut scaler_ctx) => {
-                                            let mut frame_num: usize = 0;
-
-                                            for (stream, packet) in ictx.packets() {
-                                                if stream.index() == video_stream_index {
-                                                    if let Err(_err) =
-                                                        video_decoder.send_packet(&packet)
-                                                    {
-                                                        fltk::dialog::alert_default(
-                                                            "Failed sending packet from input video stream at index {video_stream_index}:\n{_err}\nin \"{file_str}\"",
-                                                        );
-                                                        break;
-                                                    }
-
-                                                    let mut decoded = Video::empty();
-                                                    while video_decoder
-                                                        .receive_frame(&mut decoded)
-                                                        .is_ok()
-                                                    {
-                                                        let mut rgb_frame = Video::empty();
-                                                        if let Err(_err) =
-                                                            scaler_ctx.run(&decoded, &mut rgb_frame)
-                                                        {
-                                                            fltk::dialog::alert_default(
-                                                                "Failed running software rescaling on frame {frame_num} in stream at index {video_stream_index}:\n{_err}\nin \"{file_str}\"",
-                                                            );
-                                                            break;
-                                                        }
-
-                                                        println!(
-                                                            "created output frame size {}x{}",
-                                                            rgb_frame.width(),
-                                                            rgb_frame.height()
-                                                        );
-
-                                                        frame_num += 1;
-                                                    }
-
-                                                    // receive_and_process_decoded_frames(
-                                                    //     &mut decoder,
-                                                    // )?;
-                                                }
-                                            }
-                                        }
-                                        Err(_err) => fltk::dialog::alert_default(
-                                            "Error creating software scaling context for pixel format transformation:\n{_err}\nin \"{file_str}\"",
-                                        ),
-                                    }
-                                }
-                                Err(_err) => fltk::dialog::alert_default(
-                                    "Error getting codec context for decoding video stream:\n{_err}\nin \"{file_str}\"",
-                                ),
-                            }
+                match self
+                    .make_player(&chooser.filename())
+                    .context("failed to create ffmpeg interop video decoder for file {file_str}")
+                {
+                    Ok(mut player) => {
+                        let mut frames = vec![];
+                        while frames.is_empty() {
+                            frames = player.receive_frames_from_packet().unwrap();
                         }
-                        None => {
-                            fltk::dialog::alert_default(
-                                "Failed to locate video stream!\nin \"{file_str}\"",
-                            );
-                        }
-                    },
-                    Err(err) => {
-                        fltk::dialog::alert_default("Unable to load file:{err}\nat \"{file_str}\"");
+                        let img = &frames[0];
+                        let rgba = img.data(0);
+                        info!(
+                            "rgba length: {}x{}({})",
+                            img.width(),
+                            img.height(),
+                            rgba.len()
+                        );
+                        self.wgpu_state
+                            .write_texture_rgba(img.width(), img.height(), rgba);
                     }
+                    Err(err) => fltk::dialog::alert_default(&format!(
+                        "Failed to create video decoder!\n\n{err}"
+                    )),
                 }
             }
             _ => {}
         }
+    }
+
+    fn make_player(&mut self, file: &Path) -> anyhow::Result<FfmpegVideoDecoder> {
+        let ictx =
+            ffmpeg_next::format::input(&file).context("failed to load format info for file")?;
+        let stream_index = ictx
+            .streams()
+            .best(Type::Video)
+            .context("failed to locate best video stream")?
+            .index();
+        FfmpegVideoDecoder::new(ictx, stream_index)
     }
 }
 

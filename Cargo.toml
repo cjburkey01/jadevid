@@ -36,9 +36,20 @@ features = [
     "software-scaling",
     "build",
     "build-license-gpl",
+    "build-license-version3",
     "build-lib-mp3lame",
     "build-lib-opus",
     "build-lib-vorbis",
     "build-lib-x264",
     "build-lib-x265",
 ]
+
+[dependencies.tokio]
+version = "1.43"
+features = ["macros", "parking_lot", "rt", "sync", "time"]
+
+[package.metadata.bundle]
+name = "JadeVid"
+identifier = "com.cjburkey.jadevid"
+category = "public.app-category.video"
+copyright = "(c) CJ Burkey 2025. Code licensed under GPL-3.0+."

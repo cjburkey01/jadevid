@@ -67,7 +67,8 @@ pub struct WgpuState<'a> {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     ind_count: u32,
-    diffuse_bind_group: wgpu::BindGroup,
+    texture_sampler: wgpu::Sampler,
+    texture: NewTexture,
 }
 
 impl WgpuState<'_> {
@@ -110,13 +111,21 @@ impl WgpuState<'_> {
         surface.configure(&device, &surface_config);
 
         // Texture
-        let (diffuse_bind_group, texture_bind_group_layout) =
-            Self::make_texture(&device, &queue, width, height);
+        let texture_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+            address_mode_u: wgpu::AddressMode::ClampToEdge,
+            address_mode_v: wgpu::AddressMode::ClampToEdge,
+            address_mode_w: wgpu::AddressMode::ClampToEdge,
+            mag_filter: wgpu::FilterMode::Linear,
+            min_filter: wgpu::FilterMode::Nearest,
+            mipmap_filter: wgpu::FilterMode::Nearest,
+            ..Default::default()
+        });
+        let texture = Self::make_texture(&device, &texture_sampler, width, height);
 
         // Pipeline
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("pipeline_layout"),
-            bind_group_layouts: &[&texture_bind_group_layout],
+            bind_group_layouts: &[&texture.texture_bind_group_layout],
             push_constant_ranges: &[],
         });
 
@@ -155,7 +164,7 @@ impl WgpuState<'_> {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        Self {
+        let mut s = Self {
             device,
             surface,
             surface_config,
@@ -164,15 +173,17 @@ impl WgpuState<'_> {
             vertex_buffer,
             index_buffer,
             ind_count: QUAD_INDS.len() as u32,
-            diffuse_bind_group,
-        }
+            texture_sampler,
+            texture,
+        };
+        s.write_texture_rgba(width, height, &vec![0x00; (width * height * 4) as usize]);
+        s
     }
 
     #[allow(unused)]
     pub fn resize_surface(&mut self, width: u32, height: u32) {
         self.surface_config.width = width;
         self.surface_config.height = height;
-        (self.diffuse_bind_group, _) = Self::make_texture(&self.device, &self.queue, width, height);
         if self.valid_size() {
             self.surface.configure(&self.device, &self.surface_config);
         }
@@ -216,7 +227,7 @@ impl WgpuState<'_> {
             });
             // render()
             rpass.set_pipeline(&self.render_pipeline);
-            rpass.set_bind_group(0, &self.diffuse_bind_group, &[]); // image
+            rpass.set_bind_group(0, &self.texture.texture_bind_group, &[]); // image
             rpass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             rpass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             rpass.draw_indexed(0..self.ind_count, 0, 0..1);
@@ -227,16 +238,16 @@ impl WgpuState<'_> {
 
     fn make_texture(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        sampler: &wgpu::Sampler,
         width: u32,
         height: u32,
-    ) -> (wgpu::BindGroup, wgpu::BindGroupLayout) {
+    ) -> NewTexture {
         let texture_size = wgpu::Extent3d {
             width,
             height,
             depth_or_array_layers: 1,
         };
-        let diffuse_texture = device.create_texture(&wgpu::TextureDescriptor {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
             size: texture_size,
             mip_level_count: 1,
             sample_count: 1,
@@ -247,40 +258,7 @@ impl WgpuState<'_> {
             label: Some("diffuse_texture"),
             view_formats: &[],
         });
-        let mut diffuse_rgba = vec![0x11 as u8; (width * height) as usize * 4];
-        for yyy in 0..(height as usize / 4) {
-            for xxx in 0..(width as usize / 4) {
-                diffuse_rgba[16 * (xxx + yyy * width as usize) + 0] = 0x55;
-                diffuse_rgba[16 * (xxx + yyy * width as usize) + 1] = 0x55;
-                diffuse_rgba[16 * (xxx + yyy * width as usize) + 2] = 0x55;
-            }
-        }
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &diffuse_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            &diffuse_rgba,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(4 * texture_size.width),
-                rows_per_image: Some(texture_size.height),
-            },
-            texture_size,
-        );
-        let diffuse_texture_view =
-            diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         let texture_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
                 entries: &[
@@ -305,22 +283,57 @@ impl WgpuState<'_> {
                 ],
                 label: Some("texture_bind_group_layout"),
             });
-        (
-            device.create_bind_group(&wgpu::BindGroupDescriptor {
-                layout: &texture_bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
-                    },
-                ],
-                label: Some("diffuse_bind_group"),
-            }),
+        let texture_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &texture_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(&texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::Sampler(sampler),
+                },
+            ],
+            label: Some("diffuse_bind_group"),
+        });
+
+        NewTexture {
+            texture,
             texture_bind_group_layout,
-        )
+            texture_bind_group,
+        }
     }
+
+    pub fn write_texture_rgba(&mut self, width: u32, height: u32, rgb: &[u8]) {
+        if self.texture.texture.width() != width || self.texture.texture.height() != height {
+            self.texture = Self::make_texture(&self.device, &self.texture_sampler, width, height);
+        }
+
+        self.queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.texture.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            // The actual pixel data
+            &rgb,
+            // The layout of the texture
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(4 * width),
+                rows_per_image: Some(height),
+            },
+            self.texture.texture.size(),
+        );
+        self.redraw();
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct NewTexture {
+    pub texture: wgpu::Texture,
+    pub texture_bind_group_layout: wgpu::BindGroupLayout,
+    pub texture_bind_group: wgpu::BindGroup,
 }
